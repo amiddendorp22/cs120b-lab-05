@@ -8,14 +8,47 @@
  *	code, is my own original work.
  */
 #include <avr/io.h>
+#include <avr/interrupt.h>
 #ifdef _SIMULATE_
 #include "simAVRHeader.h"
 #endif
 
 volatile unsigned char TimerFlag = 0;
+unsigned long _avr_timer_M = 1;
+unsigned long _avr_timer_cntcurr = 0;
+
+void TimerOn()
+{
+	TCCR1B = 0x0B;
+	OCR1A = 125;
+	TIMSK1 = 0x02;
+	TCNT1 = 0;
+	_avr_timer_cntcurr = _avr_timer_M;
+	SREG |= 0x80;
+}
+void TimerOff()
+{
+	TCCR1B = 0x00;
+}
 void TimerISR()
 {
 	TimerFlag = 1;
+}
+
+ISR(TIMER1_COMPA_vect)
+{
+	_avr_timer_cntcurr--;
+	if(_avr_timer_cntcurr == 0)
+	{
+		TimerISR();
+		_avr_timer_cntcurr = _avr_timer_M;
+	}
+}
+
+void TimerSet(unsigned long M)
+{
+	_avr_timer_M = M;
+	_avr_timer_cntcurr = _avr_timer_M;
 }
 
 enum SM_States {SM_Init, SM_PA0, SM_Wait1, SM_Wait2, SM_PA1, SM_Wait3, SM_Both} SM_State;
@@ -181,9 +214,44 @@ int main(void) {
     /* Insert your solution below */
     SM_State = SM_Init;
     PORTC = 0x07;
+    TimerSet(100);
+    TimerOn();
+    unsigned char incrementPressed = 0x00;
+    unsigned char decrementPressed = 0x00;
+    unsigned char tmpA;
     while (1) {
-	TickFct_Press();
-	//TimerTick();
+	tmpA = ~PINA & 0x03;
+	if(tmpA == 0x00)
+	{
+		incrementPressed = 0x00;
+		decrementPressed = 0x00;
+	}
+	else if(tmpA == 0x01 && (incrementPressed != 0x01))
+	{
+		incrementPressed = 0x01;
+		decrementPressed = 0x00;
+		if(PORTC < 0x09)
+		{
+			PORTC = PORTC + 1;
+		}
+	}
+	else if(tmpA == 0x02 && (decrementPressed != 0x01))
+	{
+		decrementPressed = 0x01;
+		incrementPressed = 0x00;
+		if(PORTC > 0x00)
+		{
+			PORTC = PORTC - 1;
+		}
+	}
+	else if(tmpA == 0x03)
+	{
+		decrementPressed = 0x01;
+		incrementPressed = 0x01;
+		PORTC = 0x00;
+	}
+	while(!TimerFlag);
+	TimerFlag = 0;
     }
     return 1;
 }
