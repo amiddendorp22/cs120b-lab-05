@@ -3,136 +3,193 @@
  *	Lab Section:
  *	Assignment: Lab #  Exercise #
  *	Exercise Description: [optional - include for your own benefit]
- *	Video Demo Link : https://www.youtube.com/watch?v=MHJbvrT7Gq0
  *
  *	I acknowledge all content contained herein, excluding template or example
  *	code, is my own original work.
  */
 #include <avr/io.h>
+#include <avr/interrupt.h>
 #ifdef _SIMULATE_
 #include "simAVRHeader.h"
 #endif
 
+volatile unsigned char TimerFlag = 0;
+unsigned long _avr_timer_M = 1;
+unsigned long _avr_timer_cntcurr = 0;
 
-enum SM_States {SM_Init, SM_Off, SM_One, SM_Two, SM_Three, SM_Four, SM_Five, SM_Six } SM_State;
-
-void TickFct_Lights()
+void TimerOn()
 {
-	unsigned char tmpA = ~PINA & 0x01;
-	switch(SM_State)
-	{
-		case(SM_Init):
-			if(tmpA == 0x01)
-			{
-				SM_State = SM_Off;
-			}
-			else
-			{
-				SM_State = SM_Init;
-			}
-			break;
-		case(SM_Off):
-			if(tmpA == 0x01)
-			{
-				SM_State = SM_One;
-			}
-			else
-			{
-				SM_State = SM_Off;
-			}
-			break;
-		case(SM_One):
-			if(tmpA == 0x01)
-			{
-				SM_State = SM_Two;
-			}
-			else
-			{
-				SM_State = SM_One;
-			}
-			break;
-		case(SM_Two):
-			if(tmpA == 0x01)
-			{
-				SM_State = SM_Three;
-			}
-			else
-			{
-				SM_State = SM_Two;
-			}
-			break;
-		case(SM_Three):
-			if(tmpA == 0x01)
-			{
-				SM_State = SM_Four;
-			}
-			else
-			{
-				SM_State = SM_Three;
-			}
-			break;
-		case(SM_Four):
-			if(tmpA == 0x01)
-			{
-				SM_State = SM_Five;
-			}
-			else
-			{
-				SM_State = SM_Four;
-			}
-			break;
-		case(SM_Five):
-			if(tmpA == 0x01)
-			{
-				SM_State = SM_Six;
-			}
-			else
-			{
-				SM_State = SM_Five;
-			}
-			break;
-		case(SM_Six):
-			if(tmpA == 0x01)
-			{
-				SM_State = SM_Off;
-			}
-			else
-			{
-				SM_State = SM_Six;
-			}
-			break;
-	}
-
-	switch(SM_State)
-	{
-		case(SM_Init):
-			PORTC = 0xFF;
-			break;
-		case(SM_Off):
-			PORTC = 0x00;
-			break;
-		case(SM_One):
-			PORTC = 0x01;
-			break;
-		case(SM_Two):
-			PORTC = 0x03;
-			break;
-		case(SM_Three):
-			PORTC = 0x07;
-			break;
-		case(SM_Four):
-			PORTC = 0x0F;
-			break;
-		case(SM_Five):
-			PORTC = 0x1F;
-			break;
-		case(SM_Six):
-			PORTC = 0x3F;
-			break;
-	}
-
+	TCCR1B = 0x0B;
+	OCR1A = 125;
+	TIMSK1 = 0x02;
+	TCNT1 = 0;
+	_avr_timer_cntcurr = _avr_timer_M;
+	SREG |= 0x80;
+}
+void TimerOff()
+{
+	TCCR1B = 0x00;
+}
+void TimerISR()
+{
+	TimerFlag = 1;
 }
 
+ISR(TIMER1_COMPA_vect)
+{
+	_avr_timer_cntcurr--;
+	if(_avr_timer_cntcurr == 0)
+	{
+		TimerISR();
+		_avr_timer_cntcurr = _avr_timer_M;
+	}
+}
+
+void TimerSet(unsigned long M)
+{
+	_avr_timer_M = M;
+	_avr_timer_cntcurr = _avr_timer_M;
+}
+
+enum SM_States {SM_Init, SM_PA0, SM_PA1, SM_Both, SM_None} SM_State;
+
+void TickFct_Press()
+{
+	unsigned char tmpA = ~PINA & 0x03;
+	unsigned char increaseHeld = 0x00;
+	unsigned char decreaseHeld = 0x00;
+	switch(SM_State)
+	{
+		case(SM_Init):
+			if(tmpA == 0x00)
+			{
+				SM_State = SM_None;
+			}
+			else if(tmpA == 0x01)
+			{
+				SM_State = SM_PA0;
+			}
+			else if(tmpA == 0x02)
+			{
+				SM_State = SM_PA1;
+			}
+			else if(tmpA == 0x03)
+			{
+				SM_State = SM_Both;
+			}
+			break;
+		case(SM_PA0):
+			if(tmpA == 0x00)
+			{
+				SM_State = SM_None;
+			}
+			else if(tmpA == 0x01)
+			{
+				increaseHeld = 0x01;
+			}
+			else if(tmpA == 0x02)
+			{
+				SM_State = SM_PA1;
+			}
+			else if(tmpA == 0x03)
+			{
+				SM_State = SM_Both;
+			}
+			break;
+		case(SM_PA1):
+			if(tmpA == 0x00)
+                        {
+                                SM_State = SM_None;
+                        }
+                        else if(tmpA == 0x01)
+                        {
+                                SM_State = SM_PA0;
+                        }
+                        else if(tmpA == 0x02)
+                        {
+				decreaseHeld = 0x01;
+                        }
+                        else if(tmpA == 0x03)
+                        {
+                                SM_State = SM_Both;
+                        }
+			break;
+		case(SM_Both):
+			if(tmpA == 0x00)
+                        {
+                                SM_State = SM_None;
+                        }
+                        else if(tmpA == 0x01)
+                        {
+                                SM_State = SM_PA0;
+                        }
+                        else if(tmpA == 0x02)
+                        {
+                                SM_State = SM_PA1;
+                        }
+                        else if(tmpA == 0x03)
+                        {
+                                SM_State = SM_Both;
+                        }
+			break;
+		case(SM_None):
+			if(tmpA == 0x00)
+                        {
+                                SM_State = SM_None;
+                        }
+                        else if(tmpA == 0x01)
+                        {
+                                SM_State = SM_PA0;
+                        }
+                        else if(tmpA == 0x02)
+                        {
+                                SM_State = SM_PA1;
+                        }
+                        else if(tmpA == 0x03)
+                        {
+                                SM_State = SM_Both;
+                        }
+			break;
+
+	}
+
+	switch(SM_State)
+	{
+		case(SM_Init):
+			PORTC = 0x07;
+			break;
+		case(SM_PA0):
+			decreaseHeld = 0x00;
+			if(increaseHeld == 0x00)
+			{
+				if(PORTC < 0x09)
+				{
+					PORTC = PORTC + 0x01;
+				}
+			}
+			//while(tmpA == 0x01); //pauses the state machine
+			break;
+		case(SM_PA1):
+			increaseHeld = 0x00;
+			if(decreaseHeld == 0x00)
+			{
+				if(PORTC > 0x00)
+				{
+					PORTC = PORTC - 0x01;
+				}
+			}
+			//while(tmpA == 0x02); //pauses the state machine
+			break;
+		case(SM_Both):
+			PORTC = 0x00;
+			break;
+		case(SM_None):
+			increaseHeld = 0x00;
+			decreaseHeld = 0x00;
+			break;
+
+	}
+}
 
 int main(void) {
     /* Insert DDR and PORT initializations */
@@ -141,19 +198,24 @@ int main(void) {
     DDRC = 0xFF; PORTC = 0x00; //sets PORTC as output
     /* Insert your solution below */
     SM_State = SM_Init;
-    PORTC = 0x00;
+    PORTC = 0x07;
+    TimerSet(100);
+    TimerOn();
     unsigned char incrementPressed = 0x00;
+    unsigned char decrementPressed = 0x00;
     unsigned char tmpA;
     while (1) {
-	tmpA = ~PINA & 0x01;
-	if(tmpA == 0x01 && (incrementPressed != 0x01))
+	tmpA = ~PINA & 0x03;
+	TickFct_Press();
+	if(tmpA == 0x01)
 	{
-		incrementPressed = 0x01;
-		TickFct_Lights();
+		//while(tmpA == 0x01); //pauses the state machine
+		for(unsigned char i = 0; i < 100; i++);
 	}
-	if(tmpA == 0x00)
+	if(tmpA == 0x02)
 	{
-		incrementPressed = 0x00;
+		//while(tmpA == 0x02); //pauses the state machine
+		for(unsigned char i = 0; i < 100; i++);
 	}
     }
     return 1;
